@@ -1,46 +1,67 @@
-"""THE extension point. The template ships the MINIMAL domain: one generate route.
+"""THE extension point: the party-game domain ("Exposed / Who's Most Likely To").
 
-That minimum is deliberate. It makes ``POST /v1/generate`` work the moment ``docker compose up``
-finishes (on ``EchoProvider``), and it is the worked example of the whole contract: a service is a
-router + a provider + (optionally) settings, a pricing policy, tables and body-limit rules — and
-NOT ONE core file is touched (AC-9).
+REST: guest login, profile, catalogue, rooms, admin content API.
+Realtime: ``/v1/ws/rooms/{code}`` — room state in Redis, fan-out over Redis pub/sub, distributed
+timers (see ``realtime/``); the game rules are a pure engine (``game/``).
 
-A real service replaces this file with its own:
-
-    from app.extensions.registry import BodyLimitRule, DomainRegistry
-    from app.domain.config import DomainSettings
-    from app.domain.provider import FluxProvider
-    from app.domain.routers.image import router as image_router
-
-    REGISTRY = DomainRegistry(
-        routers=(image_router,),
-        openapi_tags=({"name": "Image", "description": "Генерация изображений"},),
-        generation_provider=FluxProvider(),
-        settings_cls=DomainSettings,
-        truncate_tables=("image_presets",),
-        body_limit_rules=(BodyLimitRule(match="/v1/image/upload", limit=12 * 1024 * 1024),),
-    )
-
-Dependency direction is strictly one-way: ``app.domain`` → ``app`` (core), never back. The core
-never imports this package; it receives the domain only as the data in ``REGISTRY``.
+The template's sample ``POST /v1/generate`` route is kept registered: the core test-suite
+(``tests/conftest.py``) patches it by module path, and it is harmless (the core policy blocks it
+without a subscription).
 """
 
 from __future__ import annotations
 
+from app.domain.config import DomainSettings
+from app.domain.models import DOMAIN_TABLES
+from app.domain.realtime.runtime import start_runtime, stop_runtime
+from app.domain.realtime.ws import router as ws_router
+from app.domain.routers.admin_content import router as admin_content_router
 from app.domain.routers.generate import router as generate_router
+from app.domain.routers.players import catalog_router
+from app.domain.routers.players import router as players_router
+from app.domain.routers.rooms import router as rooms_router
 from app.extensions.registry import DomainRegistry
 
+_API_DESCRIPTION = """
+### Игра
+1. `POST /v1/guest` — вход по `deviceId` + никнейм + аватар → токены.
+2. `POST /v1/rooms` (хост) или `POST /v1/rooms/{code}/join` (игроки).
+3. WebSocket `GET /v1/ws/rooms/{code}` с заголовком `Authorization: Bearer <accessToken>`:
+   первым приходит `room.snapshot`, дальше — события комнаты по порядку `seq`.
+   Команды: `{"type": "...", "msgId": "...", "data": {...}}` → `ack` / `error`.
+
+Полное описание протокола — `docs/realtime-protocol.md`.
+"""
+
 REGISTRY = DomainRegistry(
-    routers=(generate_router,),
+    routers=(
+        players_router,
+        catalog_router,
+        rooms_router,
+        ws_router,
+        admin_content_router,
+        generate_router,
+    ),
     openapi_tags=(
+        {"name": "Players", "description": "Гостевой вход, профиль игрока, аватары."},
+        {"name": "Catalog", "description": "Каталог игр."},
+        {
+            "name": "Rooms",
+            "description": "Создание комнаты и вход по коду. Игра идёт по WebSocket.",
+        },
+        {
+            "name": "Admin: content",
+            "description": "Управление играми, карточками, словами и аватарами (`X-Admin-Token`).",
+        },
         {
             "name": "Generation",
-            "description": (
-                "Запуск генерации и её результаты. Блокировки (нет подписки, кончились кредиты) "
-                "приходят с кодом 200 и полем blockReason — это не ошибка."
-            ),
+            "description": "Пример маршрута шаблона (в игре не используется).",
         },
     ),
-    # generation_provider is left unset on purpose: with GENERATION_PROVIDER=echo the core uses the
-    # built-in EchoProvider. A real domain sets `generation_provider=FluxProvider()` here.
+    api_description=_API_DESCRIPTION,
+    settings_cls=DomainSettings,
+    metrics_module="app.domain.metrics",
+    truncate_tables=DOMAIN_TABLES,
+    on_startup=(start_runtime,),
+    on_shutdown=(stop_runtime,),
 )

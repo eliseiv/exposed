@@ -149,6 +149,10 @@ def test_the_template_registry_is_the_one_the_loader_returns() -> None:
     from app.domain import REGISTRY
 
     assert load_registry() is REGISTRY
-    # The shipped sample contributes the generation route and its tag — and nothing else.
-    assert len(REGISTRY.routers) == 1
+    # The party-game domain: a silent ImportError would otherwise yield an EMPTY registry.
+    paths = {route.path for router in REGISTRY.routers for route in router.routes}  # type: ignore[attr-defined]
+    assert {"/v1/guest", "/v1/rooms", "/v1/ws/rooms/{code}", "/v1/modes"} <= paths
+    assert REGISTRY.settings_cls is not None and REGISTRY.settings_cls.__name__ == "DomainSettings"
+    assert "game_modes" in REGISTRY.truncate_tables
+    assert REGISTRY.on_startup and REGISTRY.on_shutdown
     assert REGISTRY.generation_provider is None

@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
+from app.extensions.loader import load_registry
 from app.models import Base
+
+# Importing the domain registers its models on Base.metadata (autogenerate would otherwise see
+# the domain tables as "extra" and emit drop_table for them).
+load_registry()
 
 config = context.config
 
