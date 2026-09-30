@@ -151,7 +151,8 @@ services:
     #     COMPOSE_PROJECT_NAME so instances behind the SHARED Traefik never collide.
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=web"
+      # Must name the SAME docker network as `networks.web.name` below.
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-web}"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-service}.rule=Host(`${SERVICE_DOMAIN:?set SERVICE_DOMAIN in .env}`)"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-service}.entrypoints=websecure"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-service}.tls=true"
@@ -162,8 +163,11 @@ services:
 networks:
   # External network shared with the Traefik edge-proxy. Created once on the server:
   #   docker network create web
+  # TRAEFIK_NETWORK picks another shared network Traefik is attached to (e.g. `web2` when the
+  # /24 of `web` is out of addresses).
   web:
     external: true
+    name: ${TRAEFIK_NETWORK:-web}
   # Internal stack network for api <-> postgres/redis.
   default:
 
