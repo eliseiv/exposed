@@ -1,5 +1,9 @@
 # Deploy / rollback runbook
 
+**Этот сервис в проде:** каталог `/opt/exposed`, compose-проект `exposed`, домен
+`https://beruniq.shop` (Traefik router/service `exposed`). Деплой — `deploy.yml` после зелёного
+`ci` на push в `main`; секреты репозитория: `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`.
+
 Источник истины по деплою инстансов сервиса: топология, процедура релиза, откат, CI/CD.
 
 ## Цель деплоя
@@ -17,8 +21,8 @@
 |---|---|
 | `docker-compose.prod.yml` | прод-стек: `api` (`expose: 8000`, сети `web`+`default`, Traefik labels) + `postgres` 16 + `redis` 7 (только `default`, без портов) + one-shot `migrate` |
 | `.env.prod.example` | шаблон прод-env (только плейсхолдеры; реальный `.env` живёт на сервере и в git не попадает) |
-| `.github/workflows/ci.yml` | CI-гейт + **gated** авто-деплой на push в `main` |
-| `.github/workflows/deploy.yml` | ручной деплой (`workflow_dispatch`) |
+| `.github/workflows/ci.yml` | CI-гейт (lint, types, tests, image build) |
+| `.github/workflows/deploy.yml` | авто-деплой после зелёного CI на push в `main` (`workflow_run`) + ручной запуск |
 | `docker-compose.prod.observability.yml` + `infra/observability/` | опциональный Prometheus (только loopback, только сеть `default`, никогда не на `web`) |
 
 ## Провижининг нового инстанса
