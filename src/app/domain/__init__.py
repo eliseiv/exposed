@@ -17,6 +17,7 @@ from app.domain.realtime.runtime import start_runtime, stop_runtime
 from app.domain.realtime.ws import router as ws_router
 from app.domain.routers.admin_content import router as admin_content_router
 from app.domain.routers.generate import router as generate_router
+from app.domain.routers.health import router as health_head_router
 from app.domain.routers.players import catalog_router
 from app.domain.routers.players import router as players_router
 from app.domain.routers.rooms import router as rooms_router
@@ -41,6 +42,7 @@ REGISTRY = DomainRegistry(
         ws_router,
         admin_content_router,
         generate_router,
+        health_head_router,
     ),
     openapi_tags=(
         {"name": "Players", "description": "Гостевой вход, профиль игрока, аватары."},

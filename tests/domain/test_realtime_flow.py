@@ -234,3 +234,9 @@ async def test_mode_change_and_random_mode_start(gclient: AsyncClient, content: 
         started = await sockets[1].wait_for("game.started")
         assert started["data"]["kind"] in ("wheel", "bomb", "hot_seat")
         assert json.dumps(started)  # serializable
+
+
+async def test_head_healthz_for_curl_i(gclient: AsyncClient) -> None:
+    for path in ("/healthz", "/health"):
+        assert (await gclient.head(path)).status_code == 200
+    assert (await gclient.get("/healthz")).json() == {"status": "ok"}
