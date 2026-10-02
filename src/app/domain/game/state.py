@@ -41,6 +41,7 @@ class ModeInfo(_Model):
     min_players: int
     max_players: int
     default_settings: dict[str, Any] = Field(default_factory=dict)
+    locale: str = "ru"
 
 
 class CardData(_Model):
@@ -186,6 +187,8 @@ class RoomState(_Model):
     seq: int = 0
     max_players: int = 12
     mode: ModeInfo | None = None  # None = pick a random mode at start
+    # Content language of the room: the random mode and the decks are picked in it.
+    locale: str = "ru"
     categories: list[str] = Field(default_factory=list)  # empty = all categories
     settings: dict[str, Any] = Field(default_factory=dict)  # host overrides of mode defaults
     players: list[Player] = Field(default_factory=list)

@@ -4,17 +4,20 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
 from app.api_gateway.rate_limit import enforce_auth_limits, enforce_other_limits
 from app.auth.service import AuthService
 from app.deps import CurrentUser, DbSession, client_ip, get_auth_service
+from app.domain.config import get_domain_settings
 from app.domain.content.repository import ContentRepository
+from app.domain.locale import resolve_locale
 from app.domain.players.service import PlayerService, Profile
 from app.domain.schemas import (
     AvatarOut,
     GuestLoginRequest,
     GuestLoginResponse,
+    Locale,
     ModeOut,
     PlayerProfileOut,
     PlayerProfileUpdate,
@@ -107,6 +110,12 @@ async def list_avatars(
     return [AvatarOut(id=a.id, key=a.key) for a in await players.avatars()]
 
 
+def content_locale(explicit: str | None, accept_language: str | None) -> str:
+    """Explicit choice → Accept-Language → DEFAULT_LOCALE, limited to SUPPORTED_LOCALES."""
+    settings = get_domain_settings()
+    return resolve_locale(explicit, accept_language, settings.locales(), settings.default_locale)
+
+
 @catalog_router.get(
     "/modes",
     response_model=list[ModeOut],
@@ -114,11 +123,26 @@ async def list_avatars(
     description=(
         "Активные игры в порядке показа. `kind` определяет логику и экран: `question_list`, "
         "`wheel`, `bomb`, `impostor`, `fill_blank`, `hot_seat`. Новая игра типа «список "
-        "вопросов» добавляется через admin API — без изменений кода клиента и сервера."
+        "вопросов» добавляется через admin API — без изменений кода клиента и сервера.\n\n"
+        "Язык: `?locale=en`, иначе по заголовку `Accept-Language`; поддерживаемые — "
+        "`SUPPORTED_LOCALES` (`ru`, `en`). Если игр на этом языке нет, отдаётся язык по "
+        "умолчанию. Фактический язык — в заголовке ответа `Content-Language`."
     ),
 )
-async def list_modes(session: DbSession) -> list[ModeOut]:
-    rows = await ContentRepository(session).list_modes()
+async def list_modes(
+    session: DbSession,
+    response: Response,
+    locale: Annotated[
+        Locale | None, Query(description="Язык каталога; не указан — по `Accept-Language`.")
+    ] = None,
+    accept_language: Annotated[str | None, Header()] = None,
+) -> list[ModeOut]:
+    repo = ContentRepository(session)
+    resolved = content_locale(locale, accept_language)
+    if not await repo.has_modes(resolved):  # no games in that language yet → default one
+        resolved = get_domain_settings().default_locale
+    response.headers["Content-Language"] = resolved
+    rows = await repo.list_modes(resolved)
     return [
         ModeOut(
             id=m.id,
@@ -130,6 +154,7 @@ async def list_modes(session: DbSession) -> list[ModeOut]:
             minPlayers=m.min_players,
             maxPlayers=m.max_players,
             defaultSettings=m.default_settings or {},
+            locale=m.locale,
             cardCounts=counts,
         )
         for m, counts in rows

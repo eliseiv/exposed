@@ -19,6 +19,9 @@
 Новая игра типа «список вопросов» создаётся через admin API (`kind=question_list` + карточки) —
 без изменений кода сервера и клиента.
 
+Контент на двух языках — `ru` и `en` (`SUPPORTED_LOCALES`): каталог отдаётся по
+`Accept-Language`, у комнаты свой язык, колоды выбираются на нём.
+
 * **REST** (OpenAPI — `/docs`): `POST /v1/guest`, `GET/PUT /v1/players/me`, `GET /v1/avatars`,
   `GET /v1/modes`, `POST /v1/rooms`, `POST /v1/rooms/{code}/join`, `GET /v1/rooms/{code}`,
   `POST /v1/rooms/{code}/leave`, admin — `/v1/admin/content/*` (`X-Admin-Token`).

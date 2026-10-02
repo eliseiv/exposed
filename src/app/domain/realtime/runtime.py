@@ -55,6 +55,7 @@ class GameRuntime:
             max_players=settings.room_max_players,
             grace_ms=settings.reconnect_grace_seconds * 1000,
             deck_limit=settings.game_deck_limit,
+            locales=settings.locales(),
             clock=clock,
         )
         self._tasks: list[asyncio.Task[Any]] = []

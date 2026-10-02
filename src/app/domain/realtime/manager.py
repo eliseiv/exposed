@@ -76,6 +76,7 @@ class RoomManager:
         max_players: int,
         grace_ms: int,
         deck_limit: int,
+        locales: tuple[str, ...] = ("ru", "en"),
         clock: Clock = _wall_clock,
         rng: random.Random | None = None,
         on_archive: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
@@ -88,6 +89,7 @@ class RoomManager:
         self._max_players = max_players
         self._grace_ms = grace_ms
         self._deck_limit = deck_limit
+        self._locales = locales
         self.clock = clock
         self._rng = rng or random.SystemRandom()
         self._on_archive = on_archive
@@ -136,6 +138,13 @@ class RoomManager:
 
     async def _enrich(self, code: str, cmd: Command) -> Command:
         """Attach database content to commands that need it (outside the room lock)."""
+        locale = cmd.data.get("locale")
+        if (
+            cmd.type == "room.update_settings"
+            and locale is not None
+            and locale not in self._locales
+        ):
+            raise GameError("invalid_data", f"locale must be one of {list(self._locales)}")
         if cmd.type == "room.update_settings" and "modeId" in cmd.data:
             data = {k: v for k, v in cmd.data.items() if k != "modeId"}
             mode_id = cmd.data["modeId"]
@@ -155,7 +164,7 @@ class RoomManager:
                 repo = ContentRepository(session)
                 picked: ModeInfo | None
                 if room.mode is None:
-                    picked = await repo.random_mode(len(room.online_ids()))
+                    picked = await repo.random_mode(len(room.online_ids()), room.locale)
                     if picked is None:
                         raise GameError("no_content", "no game fits this number of players")
                 else:  # re-read: the catalogue may have changed since the host picked it
@@ -205,7 +214,7 @@ class RoomManager:
             await self._on_archive(record)
 
     # ---- rooms -----------------------------------------------------------------------------
-    async def create_room(self, host: Player, mode_id: int | None) -> RoomState:
+    async def create_room(self, host: Player, mode_id: int | None, locale: str = "ru") -> RoomState:
         mode = await self._get_mode(mode_id) if mode_id is not None else None
         now = self.clock()
         host.joined_at = now
@@ -219,6 +228,7 @@ class RoomManager:
                 now=now,
                 max_players=self._max_players,
                 mode=mode,
+                locale=locale,
             )
             if await self.store.create(room):
                 metrics.rooms_created_total.inc()

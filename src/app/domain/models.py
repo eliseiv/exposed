@@ -36,6 +36,13 @@ from app.models.base import Base
 _now = sa_text("now()")
 
 
+_LOCALE_CHECK = "locale ~ '^[a-z]{2}$'"
+
+
+def _locale_column() -> Mapped[str]:
+    return mapped_column(Text, nullable=False, server_default=sa_text("'ru'"))
+
+
 def _in(column: str, values: tuple[str, ...]) -> str:
     return f"{column} IN ({', '.join(repr(v) for v in values)})"
 
@@ -78,6 +85,8 @@ class GameMode(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
+    # Language of the title/description AND of every card of this mode.
+    locale: Mapped[str] = _locale_column()
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, server_default=sa_text("''"))
     icon: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -98,6 +107,7 @@ class GameMode(Base):
 
     __table_args__ = (
         CheckConstraint(_in("kind", MODE_KINDS), name="ck_game_modes_kind"),
+        CheckConstraint(_LOCALE_CHECK, name="ck_game_modes_locale"),
         CheckConstraint(
             "min_players >= 1 AND max_players >= min_players", name="ck_game_modes_players"
         ),
@@ -148,6 +158,7 @@ class ImpostorWord(Base):
     word: Mapped[str] = mapped_column(Text, nullable=False)
     hint: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str] = mapped_column(Text, nullable=False)
+    locale: Mapped[str] = _locale_column()
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sa_text("true"))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=_now
@@ -155,6 +166,7 @@ class ImpostorWord(Base):
 
     __table_args__ = (
         CheckConstraint(_in("category", CATEGORIES), name="ck_impostor_words_category"),
+        CheckConstraint(_LOCALE_CHECK, name="ck_impostor_words_locale"),
     )
 
 
@@ -166,6 +178,7 @@ class BlankAnswer(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(Text, nullable=False)
+    locale: Mapped[str] = _locale_column()
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sa_text("true"))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=_now
@@ -173,6 +186,7 @@ class BlankAnswer(Base):
 
     __table_args__ = (
         CheckConstraint(_in("category", CATEGORIES), name="ck_blank_answers_category"),
+        CheckConstraint(_LOCALE_CHECK, name="ck_blank_answers_locale"),
     )
 
 

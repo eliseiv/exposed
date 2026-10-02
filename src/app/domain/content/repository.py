@@ -25,6 +25,7 @@ def mode_info(m: GameMode) -> ModeInfo:
         min_players=m.min_players,
         max_players=m.max_players,
         default_settings=dict(m.default_settings or {}),
+        locale=m.locale,
     )
 
 
@@ -32,12 +33,21 @@ class ContentRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
 
-    async def list_modes(self) -> list[tuple[GameMode, dict[str, int]]]:
-        """Active modes in catalogue order, each with its active card count per category."""
+    async def has_modes(self, locale: str) -> bool:
+        found = await self._s.scalar(
+            select(GameMode.id)
+            .where(GameMode.is_active.is_(True), GameMode.locale == locale)
+            .limit(1)
+        )
+        return found is not None
+
+    async def list_modes(self, locale: str) -> list[tuple[GameMode, dict[str, int]]]:
+        """Active modes of one language in catalogue order, with active card counts per
+        category."""
         modes = (
             await self._s.scalars(
                 select(GameMode)
-                .where(GameMode.is_active.is_(True))
+                .where(GameMode.is_active.is_(True), GameMode.locale == locale)
                 .order_by(GameMode.sort_order, GameMode.id)
             )
         ).all()
@@ -59,7 +69,7 @@ class ContentRepository:
             return None
         return mode_info(m)
 
-    async def random_mode(self, players: int) -> ModeInfo | None:
+    async def random_mode(self, players: int, locale: str) -> ModeInfo | None:
         has_cards = (
             select(Card.id)
             .where(and_(Card.mode_id == GameMode.id, Card.is_active.is_(True)))
@@ -69,6 +79,7 @@ class ContentRepository:
             select(GameMode)
             .where(
                 GameMode.is_active.is_(True),
+                GameMode.locale == locale,
                 GameMode.min_players <= players,
                 GameMode.max_players >= players,
                 GameMode.kind.in_(_KINDS_WITHOUT_CARDS) | has_cards,
@@ -110,7 +121,11 @@ class ContentRepository:
             words = (
                 await self._s.scalars(
                     select(ImpostorWord)
-                    .where(ImpostorWord.is_active.is_(True), ImpostorWord.category.in_(cats))
+                    .where(
+                        ImpostorWord.is_active.is_(True),
+                        ImpostorWord.category.in_(cats),
+                        ImpostorWord.locale == mode.locale,
+                    )
                     .order_by(func.random())
                     .limit(limit)
                 )
@@ -120,7 +135,11 @@ class ContentRepository:
             answers = (
                 await self._s.scalars(
                     select(BlankAnswer)
-                    .where(BlankAnswer.is_active.is_(True), BlankAnswer.category.in_(cats))
+                    .where(
+                        BlankAnswer.is_active.is_(True),
+                        BlankAnswer.category.in_(cats),
+                        BlankAnswer.locale == mode.locale,
+                    )
                     .order_by(func.random())
                     .limit(limit * 4)
                 )

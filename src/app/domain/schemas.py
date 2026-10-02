@@ -15,6 +15,9 @@ Nickname = Annotated[str, Field(min_length=1, max_length=24, pattern=r"^\S(.*\S)
 Category = Literal["friendly", "cringe", "spicy"]
 ModeKind = Literal["question_list", "wheel", "bomb", "impostor", "fill_blank", "hot_seat"]
 CardType = Literal["yes_no", "pick_player", "duel", "dare", "question", "blank_prompt"]
+Locale = Annotated[
+    str, Field(pattern=r"^[a-z]{2}$", description="Язык контента, ISO 639-1: `ru`, `en`.")
+]
 RoomCode = Annotated[str, Field(min_length=4, max_length=8, pattern=r"^[A-Za-z0-9]+$")]
 
 
@@ -58,6 +61,7 @@ class ModeOut(StrictModel):
     minPlayers: int
     maxPlayers: int
     defaultSettings: dict[str, Any]
+    locale: str = Field(description="Язык названия, описания и карточек игры.")
     cardCounts: dict[str, int] = Field(description="Число активных карточек по категориям.")
 
 
@@ -65,6 +69,13 @@ class ModeOut(StrictModel):
 class CreateRoomRequest(StrictModel):
     modeId: int | None = Field(
         default=None, description="Игра из каталога; `null` — случайная игра при старте."
+    )
+    locale: Locale | None = Field(
+        default=None,
+        description=(
+            "Язык комнаты (случайная игра и колоды выбираются на нём). Не указан — по "
+            "`Accept-Language`. Если указан `modeId`, язык берётся из игры."
+        ),
     )
 
 
@@ -78,6 +89,7 @@ class RoomResponse(StrictModel):
 class ModeIn(StrictModel):
     slug: Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[a-z0-9_-]+$")]
     kind: ModeKind
+    locale: Locale = "ru"
     title: Annotated[str, Field(min_length=1, max_length=100)]
     description: Annotated[str, Field(max_length=1000)] = ""
     icon: str | None = None
@@ -89,6 +101,7 @@ class ModeIn(StrictModel):
 
 
 class ModePatch(StrictModel):
+    locale: Locale | None = None
     title: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     description: Annotated[str, Field(max_length=1000)] | None = None
     icon: str | None = None
@@ -103,6 +116,7 @@ class AdminModeOut(StrictModel):
     id: int
     slug: str
     kind: str
+    locale: str
     title: str
     description: str
     icon: str | None
@@ -157,6 +171,7 @@ class WordIn(StrictModel):
     word: Annotated[str, Field(min_length=1, max_length=100)]
     hint: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     category: Category = "friendly"
+    locale: Locale = "ru"
     isActive: bool = True
 
 
@@ -164,6 +179,7 @@ class WordPatch(StrictModel):
     word: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     hint: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     category: Category | None = None
+    locale: Locale | None = None
     isActive: bool | None = None
 
 
@@ -172,18 +188,21 @@ class WordOut(StrictModel):
     word: str
     hint: str | None
     category: str
+    locale: str
     isActive: bool
 
 
 class AnswerIn(StrictModel):
     text: Annotated[str, Field(min_length=1, max_length=200)]
     category: Category = "friendly"
+    locale: Locale = "ru"
     isActive: bool = True
 
 
 class AnswerPatch(StrictModel):
     text: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     category: Category | None = None
+    locale: Locale | None = None
     isActive: bool | None = None
 
 
@@ -191,6 +210,7 @@ class AnswerOut(StrictModel):
     id: int
     text: str
     category: str
+    locale: str
     isActive: bool
 
 

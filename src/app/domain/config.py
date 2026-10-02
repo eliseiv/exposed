@@ -26,6 +26,14 @@ class DomainSettings(CoreSettings):
 
     # --- Game content ---
     game_deck_limit: int = Field(default=200, alias="GAME_DECK_LIMIT")
+    # Content languages (ISO 639-1, comma-separated). The first match of the client's
+    # Accept-Language wins; otherwise DEFAULT_LOCALE. Adding a language = config + content.
+    supported_locales: str = Field(default="ru,en", alias="SUPPORTED_LOCALES")
+    default_locale: str = Field(default="ru", alias="DEFAULT_LOCALE")
+
+    def locales(self) -> tuple[str, ...]:
+        found = tuple(x.strip().lower() for x in self.supported_locales.split(",") if x.strip())
+        return found or (self.default_locale,)
 
 
 def get_domain_settings() -> DomainSettings:

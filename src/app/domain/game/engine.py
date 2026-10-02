@@ -6,6 +6,7 @@ everything else is routed to the handler of the running game's ``kind``.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.domain.constants import CATEGORIES as CATEGORIES_ALL
@@ -14,9 +15,17 @@ from app.domain.game.lifecycle import finish_game
 from app.domain.game.modes import get_handler
 from app.domain.game.state import GameContent, ModeInfo, Player, RoomState
 
+_LOCALE_RE = re.compile(r"[a-z]{2}")
+
 
 def new_room(
-    *, code: str, host: Player, now: int, max_players: int, mode: ModeInfo | None
+    *,
+    code: str,
+    host: Player,
+    now: int,
+    max_players: int,
+    mode: ModeInfo | None,
+    locale: str = "ru",
 ) -> RoomState:
     return RoomState(
         code=code,
@@ -25,6 +34,7 @@ def new_room(
         updated_at=now,
         max_players=min(max_players, mode.max_players) if mode else max_players,
         mode=mode,
+        locale=mode.locale if mode else locale,  # a chosen game decides the language
         players=[host],
     )
 
@@ -52,6 +62,7 @@ def mode_view(mode: ModeInfo | None) -> dict[str, Any] | None:
         "title": mode.title,
         "minPlayers": mode.min_players,
         "maxPlayers": mode.max_players,
+        "locale": mode.locale,
     }
 
 
@@ -70,6 +81,7 @@ def room_view(room: RoomState, viewer: str) -> dict[str, Any]:
         "hostId": room.host_id,
         "status": room.status,
         "mode": mode_view(room.mode),
+        "locale": room.locale,
         "categories": room.categories,
         "settings": room.settings,
         "maxPlayers": room.max_players,
@@ -232,6 +244,15 @@ def _update_settings(room: RoomState, cmd: Command, ctx: Ctx) -> None:
     if "mode" in data:
         room.mode = ModeInfo.model_validate(data["mode"]) if data["mode"] else None
         room.settings = {}
+        if room.mode is not None:
+            room.locale = room.mode.locale  # the chosen game decides the language
+    if "locale" in data and not data.get("mode"):  # a concrete game chosen together wins
+        locale = data["locale"]
+        if not isinstance(locale, str) or not _LOCALE_RE.fullmatch(locale):
+            raise GameError("invalid_data", "locale must be a two-letter language code")
+        room.locale = locale
+        if room.mode is not None and room.mode.locale != locale:
+            room.mode, room.settings = None, {}  # that game is in another language
     if "categories" in data:
         cats = data["categories"] or []
         if not isinstance(cats, list) or any(c not in CATEGORIES_ALL for c in cats):
@@ -250,6 +271,7 @@ def _update_settings(room: RoomState, cmd: Command, ctx: Ctx) -> None:
         "room.settings",
         {
             "mode": mode_view(room.mode),
+            "locale": room.locale,
             "categories": room.categories,
             "settings": room.settings,
             "maxPlayers": room.max_players,

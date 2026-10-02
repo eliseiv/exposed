@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Header, Path
 
 from app.api_gateway.rate_limit import enforce_other_limits
 from app.deps import CurrentUser
@@ -15,7 +15,7 @@ from app.domain.game.state import Player
 from app.domain.players.service import PlayerService
 from app.domain.realtime.manager import normalize_code
 from app.domain.realtime.runtime import get_runtime
-from app.domain.routers.players import get_player_service
+from app.domain.routers.players import content_locale, get_player_service
 from app.domain.schemas import CreateRoomRequest, RoomCode, RoomResponse
 from app.errors import RateLimitedError
 
@@ -60,11 +60,13 @@ async def create_room(
     current: CurrentUser,
     body: CreateRoomRequest,
     players: Annotated[PlayerService, Depends(get_player_service)],
+    accept_language: Annotated[str | None, Header()] = None,
 ) -> RoomResponse:
     await _limit(current)
     player = await _player(current, players)
+    locale = content_locale(body.locale, accept_language)
     try:
-        room = await get_runtime().manager.create_room(player, body.modeId)
+        room = await get_runtime().manager.create_room(player, body.modeId, locale)
     except GameError as exc:
         raise RoomCommandError(exc) from exc
     return RoomResponse(

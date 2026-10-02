@@ -42,7 +42,7 @@ router = APIRouter()
 # Commands a client may send, each with the data keys it may carry (anything else is dropped).
 # System commands (timers, presence, join) are never accepted from a socket.
 CLIENT_COMMANDS: dict[str, tuple[str, ...]] = {
-    "room.update_settings": ("modeId", "categories", "settings"),
+    "room.update_settings": ("modeId", "locale", "categories", "settings"),
     "room.kick": ("userId",),
     "room.transfer_host": ("userId",),
     "room.leave": (),

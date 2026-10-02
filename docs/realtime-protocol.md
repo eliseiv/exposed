@@ -13,6 +13,8 @@ WS   /v1/ws/rooms/{code}          Authorization: Bearer <accessToken>
 ```
 
 1. Войти в комнату по REST (`create` / `join`) — это добавляет игрока в список участников.
+   Язык комнаты задаётся при создании: `{"locale": "en"}` в теле или заголовок
+   `Accept-Language` (см. раздел «Язык контента»).
 2. Открыть WebSocket `wss://<host>/v1/ws/rooms/{code}` с заголовком
    `Authorization: Bearer <accessToken>` (`URLSessionWebSocketTask` — через `URLRequest`).
 3. Первым сообщением **всегда** приходит `room.snapshot` — полное персональное состояние комнаты.
@@ -93,7 +95,8 @@ Access-токен живёт 1 час: при переподключении с 
   "code": "X7B2",
   "hostId": "<userId>",
   "status": "lobby | playing",
-  "mode": {"id": 1, "slug": "most_likely", "kind": "question_list", "title": "...", "minPlayers": 3, "maxPlayers": 12} | null,
+  "mode": {"id": 1, "slug": "most_likely", "kind": "question_list", "title": "...", "minPlayers": 3, "maxPlayers": 12, "locale": "ru"} | null,
+  "locale": "ru",
   "categories": ["friendly"],
   "settings": {"voteSec": 15},
   "maxPlayers": 12,
@@ -115,7 +118,7 @@ Access-токен живёт 1 час: при переподключении с 
 
 | Команда | Кто | `data` |
 |---|---|---|
-| `room.update_settings` | хост, в лобби | `modeId` (int или `null` = случайная), `categories` (`friendly`/`cringe`/`spicy`), `settings` (патч; `null` у ключа удаляет его) |
+| `room.update_settings` | хост, в лобби | `modeId` (int или `null` = случайная), `locale` (`ru`/`en`), `categories` (`friendly`/`cringe`/`spicy`), `settings` (патч; `null` у ключа удаляет его) |
 | `room.kick` | хост | `userId` |
 | `room.transfer_host` | хост | `userId` |
 | `room.leave` | любой | — |
@@ -130,13 +133,27 @@ Access-токен живёт 1 час: при переподключении с 
 | `player.disconnected` | `{userId, graceUntil}` |
 | `player.left` | `{userId, reason: left | kicked | timeout | inactive}` |
 | `host.changed` | `{hostId, reason: host_left | transferred}` — хост ушёл → хостом становится самый ранний онлайн-игрок |
-| `room.settings` | `{mode, categories, settings, maxPlayers}` |
+| `room.settings` | `{mode, locale, categories, settings, maxPlayers}` |
 | `game.started` | `{kind, mode, settings, categories, players}` |
 | `game.finished` | `{reason: completed | host_ended | not_enough_players | no_content, kind, leaderboard, summary}` — комната возвращается в лобби |
 | `room.closed` | `{}` — в комнате никого не осталось |
 
 `leaderboard`: `[{userId, nickname, avatarId, avatarKey, score, rank}]` (пустой, если в игре нет
 очков). В «Бомбе» и режиме с `scoring` очки — штрафные: меньше — лучше, порядок уже учтён.
+
+## 5a. Язык контента
+
+Поддерживаются `ru` и `en` (серверная настройка `SUPPORTED_LOCALES`). Язык есть у каждой игры
+каталога (поле `locale`); карточки, слова «Импостера» и варианты фраз идут на языке игры.
+
+* **Каталог** `GET /v1/modes`: `?locale=en` или заголовок `Accept-Language` (iOS отправляет его
+  автоматически по языку устройства). Если игр на этом языке нет — отдаётся язык по умолчанию;
+  фактический язык — в заголовке ответа `Content-Language`.
+* **Комната** создаётся с языком из тела (`locale`) или `Accept-Language` хоста; видно в снимке
+  (`locale`). При случайной игре (`mode: null`) игра и колоды выбираются на этом языке.
+* **Выбор игры** (`modeId`) делает язык комнаты равным языку игры. Смена `locale` в лобби сбрасывает
+  выбранную игру, если она на другом языке (`mode` станет `null`).
+* Тексты интерфейса (кнопки, правила) локализует клиент; сервер отдаёт только контент.
 
 ## 6. Игры
 

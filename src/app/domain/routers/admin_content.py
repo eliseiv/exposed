@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api_gateway.auth import require_admin
 from app.api_gateway.rate_limit import enforce_admin_limits
 from app.deps import DbSession, client_ip
+from app.domain.config import get_domain_settings
 from app.domain.errors import ContentNotFoundError, ModeNotFoundError, SlugTakenError
 from app.domain.models import Avatar, BlankAnswer, Card, GameMode, ImpostorWord
 from app.domain.schemas import (
@@ -36,6 +37,7 @@ from app.domain.schemas import (
     CardsImportRequest,
     Category,
     ImportResult,
+    Locale,
     ModeIn,
     ModePatch,
     Page,
@@ -86,6 +88,12 @@ async def _get(session: AsyncSession, model: type[M], obj_id: int) -> M:
     return obj
 
 
+def _check_locale(locale: str | None) -> None:
+    supported = get_domain_settings().locales()
+    if locale is not None and locale not in supported:
+        raise ValidationFailedError(f"locale must be one of {list(supported)} (SUPPORTED_LOCALES)")
+
+
 def _audit(action: str, entity: str, obj_id: Any) -> None:
     log_event(logger, logging.INFO, "admin_content", action=action, entity=entity, id=obj_id)
 
@@ -117,6 +125,7 @@ def mode_out(m: GameMode) -> AdminModeOut:
         id=m.id,
         slug=m.slug,
         kind=m.kind,
+        locale=m.locale,
         title=m.title,
         description=m.description,
         icon=m.icon,
@@ -145,9 +154,11 @@ def _check_mode(kind: str, min_p: int, max_p: int, settings: dict[str, Any]) -> 
 
 
 @router.get("/modes", response_model=list[AdminModeOut], summary="Все игры (вкл. неактивные)")
-async def admin_list_modes(session: DbSession) -> list[AdminModeOut]:
-    rows = await session.scalars(select(GameMode).order_by(GameMode.sort_order, GameMode.id))
-    return [mode_out(m) for m in rows]
+async def admin_list_modes(session: DbSession, locale: Locale | None = None) -> list[AdminModeOut]:
+    stmt = select(GameMode).order_by(GameMode.locale, GameMode.sort_order, GameMode.id)
+    if locale is not None:
+        stmt = stmt.where(GameMode.locale == locale)
+    return [mode_out(m) for m in await session.scalars(stmt)]
 
 
 @router.post(
@@ -162,6 +173,7 @@ async def admin_list_modes(session: DbSession) -> list[AdminModeOut]:
     ),
 )
 async def admin_create_mode(body: ModeIn, session: DbSession) -> AdminModeOut:
+    _check_locale(body.locale)
     _check_mode(body.kind, body.minPlayers, body.maxPlayers, body.defaultSettings)
     if await session.scalar(select(GameMode.id).where(GameMode.slug == body.slug)):
         raise SlugTakenError("slug already exists")
@@ -175,6 +187,7 @@ async def admin_create_mode(body: ModeIn, session: DbSession) -> AdminModeOut:
 
 @router.patch("/modes/{mode_id}", response_model=AdminModeOut, summary="Изменить игру")
 async def admin_update_mode(mode_id: int, body: ModePatch, session: DbSession) -> AdminModeOut:
+    _check_locale(body.locale)
     mode = await session.get(GameMode, mode_id)
     if mode is None:
         raise ModeNotFoundError("no such mode")
@@ -288,25 +301,36 @@ async def admin_delete_card(card_id: int, session: DbSession) -> None:
 
 # ---- impostor words --------------------------------------------------------------------------
 def word_out(w: ImpostorWord) -> WordOut:
-    return WordOut(id=w.id, word=w.word, hint=w.hint, category=w.category, isActive=w.is_active)
+    return WordOut(
+        id=w.id,
+        word=w.word,
+        hint=w.hint,
+        category=w.category,
+        locale=w.locale,
+        isActive=w.is_active,
+    )
 
 
 @router.get("/impostor-words", response_model=Page[WordOut], summary="Слова для «Импостера»")
 async def admin_list_words(
     session: DbSession,
     category: Category | None = None,
+    locale: Locale | None = None,
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> dict[str, Any]:
     stmt = select(ImpostorWord).order_by(ImpostorWord.id)
     if category is not None:
         stmt = stmt.where(ImpostorWord.category == category)
+    if locale is not None:
+        stmt = stmt.where(ImpostorWord.locale == locale)
     items, total = await _list(session, stmt, limit, offset)
     return _page(items, total, word_out)
 
 
 @router.post("/impostor-words", response_model=WordOut, status_code=201, summary="Добавить слово")
 async def admin_create_word(body: WordIn, session: DbSession) -> WordOut:
+    _check_locale(body.locale)
     word = ImpostorWord(**_orm_fields(body.model_dump()))
     session.add(word)
     await _flush(session)
@@ -316,6 +340,7 @@ async def admin_create_word(body: WordIn, session: DbSession) -> WordOut:
 
 @router.patch("/impostor-words/{word_id}", response_model=WordOut, summary="Изменить слово")
 async def admin_update_word(word_id: int, body: WordPatch, session: DbSession) -> WordOut:
+    _check_locale(body.locale)
     word = await _get(session, ImpostorWord, word_id)
     for key, value in _orm_fields(body.model_dump(exclude_unset=True)).items():
         setattr(word, key, value)
@@ -334,19 +359,24 @@ async def admin_delete_word(word_id: int, session: DbSession) -> None:
 
 # ---- blank answers ---------------------------------------------------------------------------
 def answer_out(a: BlankAnswer) -> AnswerOut:
-    return AnswerOut(id=a.id, text=a.text, category=a.category, isActive=a.is_active)
+    return AnswerOut(
+        id=a.id, text=a.text, category=a.category, locale=a.locale, isActive=a.is_active
+    )
 
 
 @router.get("/blank-answers", response_model=Page[AnswerOut], summary="Варианты для «Допиши фразу»")
 async def admin_list_answers(
     session: DbSession,
     category: Category | None = None,
+    locale: Locale | None = None,
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> dict[str, Any]:
     stmt = select(BlankAnswer).order_by(BlankAnswer.id)
     if category is not None:
         stmt = stmt.where(BlankAnswer.category == category)
+    if locale is not None:
+        stmt = stmt.where(BlankAnswer.locale == locale)
     items, total = await _list(session, stmt, limit, offset)
     return _page(items, total, answer_out)
 
@@ -355,6 +385,7 @@ async def admin_list_answers(
     "/blank-answers", response_model=AnswerOut, status_code=201, summary="Добавить вариант"
 )
 async def admin_create_answer(body: AnswerIn, session: DbSession) -> AnswerOut:
+    _check_locale(body.locale)
     answer = BlankAnswer(**_orm_fields(body.model_dump()))
     session.add(answer)
     await _flush(session)
@@ -364,6 +395,7 @@ async def admin_create_answer(body: AnswerIn, session: DbSession) -> AnswerOut:
 
 @router.patch("/blank-answers/{answer_id}", response_model=AnswerOut, summary="Изменить вариант")
 async def admin_update_answer(answer_id: int, body: AnswerPatch, session: DbSession) -> AnswerOut:
+    _check_locale(body.locale)
     answer = await _get(session, BlankAnswer, answer_id)
     for key, value in _orm_fields(body.model_dump(exclude_unset=True)).items():
         setattr(answer, key, value)
